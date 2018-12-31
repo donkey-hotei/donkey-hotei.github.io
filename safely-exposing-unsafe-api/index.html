@@ -1,0 +1,301 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+      <!-- Enable responsiveness on mobile devices-->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+      <title></title>
+
+      
+
+      
+          <link rel="stylesheet" href="http://mysterious.computer/site.css">
+      
+
+      
+      
+    </head>
+
+    <body class="hack dark main container">
+        
+
+<article itemscope itemtype="http://schema.org/BlogPosting">
+    <header>
+        <h1 itemprop="headline">safely exposing unsafe code in Rust</h1>
+        <span class="muted">
+    <svg style="margin-bottom:-3px" class="i-clock" viewBox="0 0 32 32"
+         width="16" height="16" fill="none" stroke="currentcolor"
+         stroke-linecap="round" stroke-linejoin="round" stroke-width="6.25%">
+        <circle cx="16" cy="16" r="14"/>
+        <path d="M16 8 L16 16 20 20"/>
+    </svg>
+    <span>7 minute read</span>
+    <svg style="margin-bottom: -3px" class="i-edit" viewBox="0 0 32 32"
+         width="16" height="16" fill="none" stroke="currentcolor"
+         stroke-linecap="round" stroke-linejoin="round" stroke-width="6.25%">
+        <path d="M30 7 L25 2 5 22 3 29 10 27 Z M21 6 L26 11 Z M5 22 L10 27 Z"/>
+    </svg>
+
+    Published: 2018-12-23
+</span>
+    </header>
+    <div itemprop="articleBody">
+      <p>In one of my first blog posts, I'll be writing about exposing unsafe code
+safely to end users. Rust is a language that prides it self on memory safety and
+high-level &quot;zero-cost&quot; abstractions. Though somtimes, to get things done, a programmer has to write
+code which is inherently unsafe. This is especially true for those working closer to the
+metal.</p>
+<p>Even looking at the Rust core library itself we see a variety of data structures, like <code>Vec</code> that,
+while they can be used by us with utmost safety, are themselves implemented using unsafe
+code.</p>
+<p>While working though Stanford's CS140e course, to learn Rust and operating systems development,
+I've come across a good many use cases where, despite having to write a good amount of
+unsafe code to interface with the ARM processor and other peripherals on the Rasperry Pi, we
+find ourselves leveraging Rust's type system to lift the unsafe code into safe and usable
+libraries, enforcing those type-safe guarantees ourselves.</p>
+<p>Today we're met with the need to write a heap allocator from scratch so that we can leverage
+types like <code>Vec</code>, <code>HashSet</code>, &amp; <code>Box</code> in our small operating system kernel.. To accomplish this we
+need to get the kernel to read a what is called an <a href="http://www.simtec.co.uk/products/SWLINUX/files/booting_article.html#d0e428">ATAG</a> list that's created by the firmware
+bootloader and placed in RAM on start.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">+-----------+
+</span><span style="color:#c0c5ce;">base -&gt; | ATAG_CORE |  |                       a CORE tag always starts the list
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">+-----------+  |
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">| ATAG_MEM  |  | increasing address    MEM tags describe the memory layout
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">+-----------+  |
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">| ATAG_CMD  |  |                       CMD tags are commands for the kernel
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">+-----------+  |
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">| ATAG_NONE |  |                       a NONE tag always terminates the list
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">+-----------+  v
+</span></pre>
+<p>Each tag in the list contains some information about the specific system that the
+kernel is running atop of: memory layout, console info, &amp;c. All of this information is provided
+to the kernel by the bootloader without the kernel having any idea on how the setup was performed.
+We'll access this information to then build our custom memory allocator, by building an <code>Iterator</code>
+over these ATAGs.</p>
+<p>We start by representing a raw ATAG with a struct:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">repr</span><span style="color:#c0c5ce;">(C)]
+</span><span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Atag {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub </span><span style="color:#bf616a;">dwords</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub </span><span style="color:#bf616a;">tag</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub </span><span style="color:#bf616a;">kind</span><span style="color:#c0c5ce;">: Kind,
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Each <code>Kind</code> of tag will contain differing types of information and yet exist in within the
+same region of memory as another kind. Because of this, it's necessary we use a C-like <code>union</code>
+so that we can store different struct layouts in the same memory space. Just as in C, the
+union will have the maximum size and alignment of any of it's fields.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">repr</span><span style="color:#c0c5ce;">(c)]
+</span><span style="color:#b48ead;">pub</span><span style="color:#c0c5ce;"> union Kind {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub</span><span style="color:#c0c5ce;"> core: Core,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub</span><span style="color:#c0c5ce;"> mem: Mem,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub</span><span style="color:#c0c5ce;"> cmd: Cmd,
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>With each of the types <code>Core</code>, <code>Mem</code>, and <code>Cmd</code> describing, as structs, the kind of information
+the tag contains. All's well, however the compiler cannot make guarantees that the end-user
+of this raw <code>Atag</code> will always read the correct type of a raw union. Thus, manipulating a raw Atag is
+memory unsafe.</p>
+<p>Before we start implementing our conversion from raw structures to the safe structures we still
+need a way of determining the address of the ATAG following the one pointed to by <code>self</code> and
+return a reference to it.</p>
+<p>The signature is:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">next</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Option&lt;&amp;Atag&gt;
+</span></pre>
+<p>Where <code>&amp;self</code> is the current <code>Atag</code> reference. All ATAGs contain a field that gives it's
+size in <em>double words</em> (32-bit words) and we can use this information to know at what
+offset from the pointer to <code>self</code> the <em>next</em> ATAG in the list lives.</p>
+<p>To do all of these we'll need to do some fancier type casting to get to the raw pointer,
+compute the offset to the next, before eventually casting that to a <code>&amp;Atag</code>.</p>
+<p>Raw pointers in Rust are described using the type <code>*const T</code> and <code>*mut T</code>, on our 32-bit
+ARM processor our pointers have the shape <code>T</code> of <code>u32</code>. Since we cannot cast from a reference
+type to a raw 32-bit pointer directly, we cast to a raw pointer to the <code>Atag</code> type and then to
+a <code>*const u32</code> like so:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> curr = </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">as </span><span style="color:#b48ead;">*const</span><span style="color:#c0c5ce;"> Atag as </span><span style="color:#b48ead;">*const u32
+</span></pre>
+<p>Before then calculating the <a href="https://doc.rust-lang.org/std/primitive.pointer.html#method.offset">offset</a> to the next ATAG:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> next = curr.</span><span style="color:#96b5b4;">offset</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.dwords) as </span><span style="color:#b48ead;">*const</span><span style="color:#c0c5ce;"> Atag
+</span></pre>
+<p>And finally converting from <code>*const T</code> to <code>&amp;T</code> by dereferencing the pointer and grabbing
+it's reference, giving us:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Atag {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub const </span><span style="color:#d08770;">NONE</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u32 </span><span style="color:#c0c5ce;">= </span><span style="color:#d08770;">0x00000000</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub const </span><span style="color:#d08770;">CORE</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u32 </span><span style="color:#c0c5ce;">= </span><span style="color:#d08770;">0x54410001</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub const </span><span style="color:#d08770;">MEM</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u32 </span><span style="color:#c0c5ce;">= </span><span style="color:#d08770;">0x54410002</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">...
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Returns the ATAG following `self`, if there is one.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">next</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Option&lt;&amp;Atag&gt; {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">match </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.tag {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">Atag::</span><span style="color:#d08770;">NONE </span><span style="color:#c0c5ce;">=&gt; None,
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">_ =&gt; {
+</span><span style="color:#c0c5ce;">                </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> curr = </span><span style="color:#bf616a;">self </span><span style="color:#c0c5ce;">as </span><span style="color:#b48ead;">*const</span><span style="color:#c0c5ce;"> Atag as </span><span style="color:#b48ead;">*const u32</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">                </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> next: &amp;Atag = </span><span style="color:#b48ead;">unsafe </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">                    </span><span style="color:#c0c5ce;">&amp;*(curr.</span><span style="color:#96b5b4;">offset</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.dwords as </span><span style="color:#b48ead;">isize</span><span style="color:#c0c5ce;">) as </span><span style="color:#b48ead;">*const</span><span style="color:#c0c5ce;"> Atag)
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">};
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">Some(next)
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span></pre>
+<p>We now have a way of traversing the ATAG list using some pattern matching on the
+tag value and some simple pointer arithemetic. This will later be used to create our
+safe <code>Iterator</code> implementation.</p>
+<p>To expose this raw union type safely, we can leverage the safer tagged-union, or <code>enum</code>, type
+which gives us the advatage of unions but with the added security of memory safety since
+the enumeration will always keep track of whatever particular type it contains.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">derive</span><span style="color:#c0c5ce;">(Debug, Copy, Clone)]
+</span><span style="color:#b48ead;">pub enum </span><span style="color:#c0c5ce;">Atag {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Core(raw::Core),
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Mem(raw::Mem),
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Cmd(&amp;</span><span style="color:#b48ead;">&#39;static str</span><span style="color:#c0c5ce;">),
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Unknown(</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">),
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">None
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>With our tagged-union type in place, how to do we go about converting our <code>raw::Atag</code> types
+to the safer enumerated version?</p>
+<p>Rust provides us with a useful trait called <a href="https://doc.rust-lang.org/std/convert/trait.From.html"><code>From</code></a> for dealing with concept of performing
+type conversions (safely!) from some type <code>T</code> into whatever <code>U</code> type the trait is being
+implemented for.</p>
+<p>Since each variant of the <code>Atag</code> enum is simply a wrapper around their raw untagged counterpart
+implementing the <code>From</code> trait for each <code>raw::Kind</code> should be as simple as pattern matching on
+the structure of each atag and it's associated <code>Kind</code> type before then wrapping it with the
+appropriate <code>enum</code> variant:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// Convert from raw::* types into Atag
+</span><span style="color:#b48ead;">impl</span><span style="color:#c0c5ce;">&lt;</span><span style="color:#b48ead;">&#39;a</span><span style="color:#c0c5ce;">&gt; From&lt;&amp;</span><span style="color:#b48ead;">&#39;a </span><span style="color:#c0c5ce;">raw::Atag&gt; </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">Atag {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">from</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">atag</span><span style="color:#c0c5ce;">: &amp;raw::Atag) -&gt; Atag {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">unsafe </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">            </span><span style="color:#b48ead;">match </span><span style="color:#c0c5ce;">(atag.tag, &amp;atag.kind) {
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">(raw::Atag::</span><span style="color:#d08770;">CORE</span><span style="color:#c0c5ce;">, &amp;raw::Kind { core }) =&gt; Atag::Core(core),
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">(raw::Atag::</span><span style="color:#d08770;">MEM</span><span style="color:#c0c5ce;">, &amp;raw::Kind { mem }) =&gt; Atag::Mem(mem),
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">...
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">(raw::Atag::</span><span style="color:#d08770;">NONE</span><span style="color:#c0c5ce;">, _) =&gt; Atag::None,
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">(id, _) =&gt; Atag::Unknown(id),
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Though special attention should be made when converting the struct:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Cmd {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// The first byte of the command line string.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub </span><span style="color:#bf616a;">cmd</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u8
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>into the <code>Cmd(&amp;'static str)</code> variant our enum. Noting that the <code>cmd</code> is a single byte <em>from
+the start of the null-terminated C-style string</em> we know that <code>&amp;cmd</code> is the start address of
+that string and that before allocating the string it's size must be found by looping over it
+until we hit the null terminator <code>\0</code> before then casting the start address and found size
+into a slice using <a href="https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html"><code>slice::from_raw_parts()</code></a> and then finally into a string using
+<a href="https://doc.rust-lang.org/std/str/fn.from_utf8.html"><code>str::from_utf8()</code></a>. With a string represented like:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;"> </span><span style="color:#c0c5ce;">0x0fe  0x102 0x106  0x10a  0x10e  0x112
+</span><span style="color:#c0c5ce;">.-----.------.------.------.------.------.
+</span><span style="color:#c0c5ce;">| &quot;A&quot; |  &quot;B&quot; | &quot;C&quot;  |  &quot;D&quot; |  &quot;E&quot; | &quot;\0&quot; |
+</span><span style="color:#c0c5ce;">`-----&#39;------&#39;------&#39;------&#39;------&#39;------&#39;
+</span><span style="color:#c0c5ce;"> </span><span style="color:#c0c5ce;">&amp;cmd
+</span></pre>
+<p>We want to increments four bytes at a time when we <a href="https://doc.rust-lang.org/std/ptr/fn.add.html">add</a> to our pointer so, we ensure our
+pointer is of size <code>u8</code>, as expected. Incrementing <code>len</code> until we hit a null-byte:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">match </span><span style="color:#c0c5ce;">(atag.tag, &amp;atag.kind) {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">...
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">(raw::Atag::</span><span style="color:#d08770;">CMDLINE</span><span style="color:#c0c5ce;">, &amp;raw::Kind { </span><span style="color:#b48ead;">ref</span><span style="color:#c0c5ce;"> cmd }) =&gt; {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> ptr = cmd as </span><span style="color:#b48ead;">*const </span><span style="color:#c0c5ce;">raw::Cmd as </span><span style="color:#b48ead;">*const u8</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> len = </span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">while </span><span style="color:#c0c5ce;">!ptr.</span><span style="color:#96b5b4;">add</span><span style="color:#c0c5ce;">(len).</span><span style="color:#96b5b4;">is_null</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">len += </span><span style="color:#d08770;">1</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> cmd = slice::from_raw_parts(ptr, len);
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">Atag::Cmd(</span><span style="color:#b48ead;">str</span><span style="color:#c0c5ce;">::from_utf8_unchecked(cmd))
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">},
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">...
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>With all this unsafe business out of the way, we can now finish our ATAG <code>Iterator</code> trait
+requiring no <code>unsafe</code> keyword!</p>
+<p>Here is the type we'll be implementing <code>Iterator</code> for:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// An iterator over the ATAGS on this system.
+</span><span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Atags {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">ptr</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">&#39;static </span><span style="color:#c0c5ce;">raw::Atag,
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>The <code>ptr</code> field is a <code>raw::Atag</code> that we've already implemented a <code>next</code> method for using
+unsafe code for pointer arithmetic. Trusting that ATAG list's layout is created as above
+by the bootloader, ending with a <code>NONE</code> tag, the <code>next</code> method on <code>raw::Atag</code> should return
+<code>None</code> if the tag is null, and we can ensure that the iterator will stop at the end of the
+ATAG list. With all this, let's finally put our iterator together as:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Iterator </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">Atags {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">type </span><span style="color:#c0c5ce;">Item = Atag;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">next</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Option&lt;Atag&gt; {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">if let </span><span style="color:#c0c5ce;">Some(next) = </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.ptr.</span><span style="color:#96b5b4;">next</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> curr = </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.ptr;
+</span><span style="color:#c0c5ce;">            </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.ptr = next;
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">Some(curr.</span><span style="color:#96b5b4;">into</span><span style="color:#c0c5ce;">())
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">} </span><span style="color:#b48ead;">else </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">None
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Making sure we're updating the current pointer, to ensure our iterator moves forward.
+Since <code>Debug</code> has been derived for our <code>Atag</code> types, let's see what ATAGs have been
+initialized by the bootloader by looping over our <code>Atags</code> iterator in <code>kmain.rs</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">no_mangle</span><span style="color:#c0c5ce;">]
+</span><span style="color:#b48ead;">pub unsafe extern </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">C</span><span style="color:#c0c5ce;">&quot; </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">kmain</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">...
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> atag in Atags::get() {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">kprintln!(&quot;</span><span style="color:#a3be8c;">{:#?}</span><span style="color:#c0c5ce;">&quot;, atag); 
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">loop </span><span style="color:#c0c5ce;">{ </span><span style="color:#96b5b4;">run_shell</span><span style="color:#c0c5ce;">() }
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">...
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Part two of this blog post series on will be about writing heap allocators in Rust for
+the Raspberry Pi's ARM processor using the ATAG iterator we created for this assignment.</p>
+
+    </div>
+
+    
+        <footer>
+            <hr>
+            <p>
+                
+                
+                
+            </p>
+        </footer>
+    
+</article>
+
+
+    </body>
+
+</html>
