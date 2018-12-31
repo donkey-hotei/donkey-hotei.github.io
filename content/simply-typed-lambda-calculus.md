@@ -1,5 +1,5 @@
 +++
-title = "Programming Languages: Interpreters"
+title = "programming languages: interpreters"
 date = 2018-12-23
 +++
 
