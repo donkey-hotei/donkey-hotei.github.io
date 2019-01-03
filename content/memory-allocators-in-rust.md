@@ -1,5 +1,5 @@
 +++
-title = "dynamic memory allocators in Rust"
+title = "DRAFT: dynamic memory allocators in Rust"
 date = 2018-01-03
 +++
 Welcome to part two of my CS140e blog post series, where I write down my notes as I work
