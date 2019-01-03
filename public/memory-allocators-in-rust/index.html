@@ -1,0 +1,229 @@
+
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+      <meta http-equiv="X-UA-Compatible" content="IE=edge">
+      <meta http-equiv="content-type" content="text/html; charset=utf-8">
+
+      <!-- Enable responsiveness on mobile devices-->
+      <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+
+      <title></title>
+
+      
+
+      
+          <link rel="stylesheet" href="http://mysterious.computer/site.css">
+      
+
+      
+      
+    </head>
+
+    <body class="hack dark main container">
+        
+
+<article itemscope itemtype="http://schema.org/BlogPosting">
+    <header>
+        <h1 itemprop="headline">dynamic memory allocators in Rust</h1>
+        <span class="muted">
+    <svg style="margin-bottom:-3px" class="i-clock" viewBox="0 0 32 32"
+         width="16" height="16" fill="none" stroke="currentcolor"
+         stroke-linecap="round" stroke-linejoin="round" stroke-width="6.25%">
+        <circle cx="16" cy="16" r="14"/>
+        <path d="M16 8 L16 16 20 20"/>
+    </svg>
+    <span>6 minute read</span>
+    <svg style="margin-bottom: -3px" class="i-edit" viewBox="0 0 32 32"
+         width="16" height="16" fill="none" stroke="currentcolor"
+         stroke-linecap="round" stroke-linejoin="round" stroke-width="6.25%">
+        <path d="M30 7 L25 2 5 22 3 29 10 27 Z M21 6 L26 11 Z M5 22 L10 27 Z"/>
+    </svg>
+
+    Published: 2018-01-03
+</span>
+    </header>
+    <div itemprop="articleBody">
+      <p>Welcome to part two of my CS140e blog post series, where I write down my notes as I work
+through Stanford's <a href="https://web.stanford.edu/class/cs140e">experimental course on operating systems in Rust</a>. Today, we're going
+to write a dynamic memory allocator in Rust so that the kernel can use data structures
+that are dynamically allocated during runtime  such as the collections <code>Vec</code> and <code>HashSet</code>.
+Basically this is <code>malloc</code> and <code>free</code>: Rust-style. This will be less constraining than only
+being able the <a href="https://github.com/donkey-hotei/cs140e/blob/1102a214a1f4d2254a761ac8551db45db9c7f216/1-shell/stack-vec/src/lib.rs">stack</a> which is <em>bounded</em> by a user-supplied slice to <code>StackVec</code>.</p>
+<p>Rust 1.28 introduced a stable <code>#[global_allocator]</code> attribute that allows Rust programs to either
+set the allocator used to the system allocator as well as create new allocators which implment
+the <code>GlobalAlloc</code> trait. This is very nice for us because this means that just by properly
+<a href="https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html">implementing</a> <code>alloc</code> and <code>dealloc</code> within our custom allocator, we'll be able to manage
+memory without having to know exactly how much memory our kernel will need at runtime.</p>
+<h2 id="memory-alignment">Memory Alignment</h2>
+<p>To set the stage for our memory allocators, let's first talk about a little thing that
+most programmers don't have to know about: memory-alignment. Memory alignment is a sort
+of convention for where objects are placed in memory. We say a memory address <em>k</em> is <em>n</em>-byte
+aligned if <code>k mod n == 0</code>. C's default allocator guarantees 8-byte alignment on 32-bit systems
+and 16-byte aligned on 64-bit systems. This is not without good reason. (TODO: Write reason)</p>
+<p>Signatures for <code>malloc</code> and <code>free</code> in C:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">void </span><span style="color:#c0c5ce;">* </span><span style="color:#8fa1b3;">malloc</span><span style="color:#c0c5ce;">(size_t </span><span style="color:#bf616a;">size</span><span style="color:#c0c5ce;">);
+</span><span style="color:#b48ead;">void </span><span style="color:#8fa1b3;">free</span><span style="color:#c0c5ce;">(</span><span style="color:#b48ead;">void </span><span style="color:#c0c5ce;">* </span><span style="color:#bf616a;">pointer</span><span style="color:#c0c5ce;">);
+</span></pre>
+<p>And the related signatures of <code>alloc</code> and <code>dealloc</code> in Rust's unsafe <code>GlobalAlloc</code> trait:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">unsafe fn </span><span style="color:#8fa1b3;">alloc</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">_layout</span><span style="color:#c0c5ce;">: Layout) -&gt; </span><span style="color:#b48ead;">*mut u8</span><span style="color:#c0c5ce;">;
+</span><span style="color:#b48ead;">unsafe fn </span><span style="color:#8fa1b3;">dealloc</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">_ptr</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">*mut u8</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">_layout</span><span style="color:#c0c5ce;">: Layout);
+</span></pre>
+<p>The <code>Layout</code> type describes the particular layout of a block of memory. This type has two
+getter methods <code>layout.size()</code> and <code>layout.align()</code> that return the requested size of our
+block and the alignment of that memory block's address.</p>
+<p><code>GlobalAlloc</code> is an unsafe trait (like <code>Send</code> and <code>Sync</code>) for a variety of reasons:</p>
+<ol>
+<li><code>alloc</code> can cause undefined behavior if the caller does not ensure that the <code>layout</code>
+argument has non-zero size.</li>
+<li>That allocated block of memory may or may not be initialized.</li>
+<li><code>dealloc</code> will cause undefined behavior the caller does not ensure that
+the <code>ptr</code> denotes a block of memory returned by <code>alloc</code> (allocated via this
+allocator) and that the memory <code>layout</code> is the same as that used to allocate
+the block of memory we're freeing.</li>
+</ol>
+<p>In writing this allocator one make sure that the addresses returned are properly aligned.
+A difference from C we see here is that Rust split the responsiblities of dynamic memory
+allocation such that the caller of <code>alloc</code> and <code>dealloc</code> must specify the the alignment.
+<code>alloc</code> puts the burden of responsiblity on the allocator to return an address in memory
+that is properly aligned while <code>dealloc</code> puts the onus on the caller to keep track of the
+memory layout that was previous used to allocate the address being free'd. Rust has more
+restrictions on memory alignment than C does. The benefits of this are that all common
+code are in the same location avoiding the same code being written for every allocator.
+This goes well with Rust's power to abstract away details from the user and additionally
+allows the Rust compiler to perform some langauge-level optimizations without involving
+the allocator.</p>
+<p>Back to memory alignment: we need to write two utility functions to aide us, <code>align_up</code>
+and <code>align_down</code> which will find the closest memory address upwards or downwards to
+the nearest multiple of some power of two. The power of two thing is <em>just a convention</em>,
+but a good one at that because it's how computers are built! Multiplication, division,
+addition, and subtraction, are all much easier to do (i.e: faster) than attempting to do
+so with non-binary powers.</p>
+<p>In a few simple lines, including an assertion that the <code>align</code> argument is a power of <a href="https://doc.rust-lang.org/std/primitive.usize.html#method.is_power_of_two">two</a>.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// Align `addr` downwards to the nearest multiple of `align`.
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// The returned usize is always &lt;= `addr.`
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// # Panics
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// Panics if `align` is not a power of 2.
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">align_down</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">addr</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">align</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">) -&gt; </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">assert!(align.</span><span style="color:#96b5b4;">is_power_of_two</span><span style="color:#c0c5ce;">());
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">(addr / align) * align
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#65737e;">/// Align `addr` upwards to the nearest multiple of `align`.
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// The returned `usize` is always &gt;= `addr.`
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// # Panics
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// Panics if `align` is not a power of 2.
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">align_up</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">addr</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">align</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">) -&gt; </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">    </span><span style="color:#96b5b4;">align_down</span><span style="color:#c0c5ce;">(addr + align - </span><span style="color:#d08770;">1</span><span style="color:#c0c5ce;">, align)
+</span><span style="color:#c0c5ce;">}
+</span></pre><h2 id="thread-safety">Thread Safety</h2>
+<p>There is already extensive literature on creating thread-safe memory allocators. The reason
+is because most allocators are <em>global</em> to the scope of a program and <code>dealloc</code> and <code>alloc</code>
+are certainly <em>not</em> reentrant functions, as they operate on a slab of shared data. What happens
+if two separate threads (which we don't support yet) calls <code>alloc</code> at the sime time? Could
+they receive the same address? If so, how large would the allocated region be? Rust, as a
+language, takes these questions of concurrency very seriously. It is difficult to write
+programs in Rust that isn't thread-safe. For our part the instructor has simply wrapped the
+allocator in a <code>Mutex</code> ensuring thread-safety by mutual-exclusion.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">path </span><span style="color:#c0c5ce;">= &quot;</span><span style="color:#a3be8c;">bump.rs</span><span style="color:#c0c5ce;">&quot;]
+</span><span style="color:#b48ead;">mod </span><span style="color:#c0c5ce;">imp;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#65737e;">/// Thread-safe (locking) wrapper around a particular memory allocator.
+</span><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">derive</span><span style="color:#c0c5ce;">(Debug)]
+</span><span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Allocator(Mutex&lt;Option&lt;imp::Allocator&gt;&gt;);
+</span></pre>
+<p>Note here that the <code>imp</code> module is <em>virtual</em> and not actually backed by a file of the same
+name on the file-system but instead given a path to the allocator of our choosing. In this
+lab we're going to write two different kinds of allocators so having an ability to easily
+switch between implementations is really convienent. Our first allocator is called a &quot;bump
+allocator&quot; and our second is a &quot;bin allocator&quot;. We'll go into more detail as to how these
+two memory allocators work further along in the post.</p>
+<h2 id="mapping-memory">Mapping Memory</h2>
+<p>Here is the implementation of our generic memory allocator:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Allocator {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Returns an uninitialized `Allocator`.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">///
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// The allocator must be initialized by calling `initialize()` before the
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// first memory allocation. Failure to do will result in panics.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub const fn </span><span style="color:#8fa1b3;">uninitialized</span><span style="color:#c0c5ce;">() -&gt; </span><span style="color:#b48ead;">Self </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">Allocator(Mutex::new(None))
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Initializes the memory allocator.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">///
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// # Panics
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">///
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Panics if the system&#39;s memory map could not be retrieved.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">initialize</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let </span><span style="color:#c0c5ce;">(start, end) = </span><span style="color:#96b5b4;">memory_map</span><span style="color:#c0c5ce;">().</span><span style="color:#96b5b4;">expect</span><span style="color:#c0c5ce;">(&quot;</span><span style="color:#a3be8c;">failed to find memory map</span><span style="color:#c0c5ce;">&quot;);
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">*</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.</span><span style="color:#d08770;">0.</span><span style="color:#96b5b4;">lock</span><span style="color:#c0c5ce;">() = Some(imp::Allocator::new(start, end));
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>The <code>initialize</code> method constructs an instance of the internal <code>imp::Allocator</code> structure
+for later allocations and deallocations. It in turn calls <code>memory_map</code> to find out the start and
+end point of a region the region memory that has been mapped by the Raspberry Pi's bootloader
+on start. We can implement this using the <code>Atags</code> implementation of the <a href="https://mysterious.computer/safely-exposing-unsafe-api">previous post</a>!</p>
+<p>Since the MEM ATAG gives us the amount of memory available in RAM, we can just take the
+start address in the tag (likely 0x0000000) and then add the size to that number to get
+the end address before returning them both as a tuple <code>(start, end)</code>.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">// Holds the first address after the kernel&#39;s binary.
+</span><span style="color:#b48ead;">extern </span><span style="color:#c0c5ce;">&quot;</span><span style="color:#a3be8c;">C</span><span style="color:#c0c5ce;">&quot; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">static</span><span style="color:#c0c5ce;"> _end: </span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">pi::atags::Atags;
+</span><span style="color:#65737e;">/// Returns the (start address, end address) of the available memory on this
+</span><span style="color:#65737e;">/// system if it can be determined. If it cannot, `None` is returned.
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// This function is expected to return `Some` under all normal cirumstances.
+</span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">memory_map</span><span style="color:#c0c5ce;">() -&gt; Option&lt;(</span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">, </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">)&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> binary_end = </span><span style="color:#b48ead;">unsafe </span><span style="color:#c0c5ce;">{ (&amp;_end as </span><span style="color:#b48ead;">*const u8</span><span style="color:#c0c5ce;">) as </span><span style="color:#b48ead;">u32 </span><span style="color:#c0c5ce;">};
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">for</span><span style="color:#c0c5ce;"> atag in Atags::get() {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">if let </span><span style="color:#c0c5ce;">Some(mem) = atag.</span><span style="color:#96b5b4;">mem</span><span style="color:#c0c5ce;">() {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#b48ead;">return </span><span style="color:#c0c5ce;">Some(
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">(mem.start as </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">, (binary_end + mem.size) as </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">)
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">);
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">None
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>It's imporant to note that the MEM ATAG reports the amount of <em>total system memory</em> in RAM,
+however, and not the amount of actually free memory. Our instructor has helpfully defined
+for us <code>binary_end</code> that holds the first address of memory after the kernel</p>
+
+    </div>
+
+    
+        <footer>
+            <hr>
+            <p>
+                
+                
+                
+            </p>
+        </footer>
+    
+</article>
+
+
+    </body>
+
+</html>

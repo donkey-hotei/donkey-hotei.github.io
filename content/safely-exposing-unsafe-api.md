@@ -261,7 +261,8 @@ initialized by the bootloader by looping over our `Atags` iterator in `kmain.rs`
 pub unsafe extern "C" fn kmain() {
     ...
     for atag in Atags::get() {
-        kprintln!("{:#?}", atag); 
+        // pretty-print
+        kprintln!("{:#?}", atag);
     }
 
     loop { run_shell() }
@@ -269,8 +270,34 @@ pub unsafe extern "C" fn kmain() {
 }
 ```
 
+Booting up the Pi and sending the new kernel binary over [UART][7], we see three ATAGs
+printed to the screen:
+
+```
+Core(
+    Core {
+        flags: 0,
+        page_size: 0,
+        root_dev: 0
+    }
+)
+Mem(
+    Mem {
+        size: 994050048,
+        start: 0
+    }
+)
+Cmd(
+    "bcm2708_fb.fbwidth=656 bcm2708_fb.fbheight=416 bcm2708_fb.fbswap=1 dma.dmachans=0x7f35 bcm2709.boardrev=0xa02082 bcm2709.serial=0x91055cb9 bcm2709.uart_clock=48000000 smsc95xx.macaddr=B8:27:EB:05:5C:B9 vc_mem.mem_base=0x3ec00000 vc_mem.mem_size=0x40000000  console=ttyS0,115200 kgdboc=ttyS0,115200 console=tty1 root=/dev/mmcblk0p2 rootfstype=ext4 rootwait"
+)
+```
+
+The MEM tag reports nearly a GiB of memory, about .074219 GiB less than the Pi's purported
+1 GiB of RAM. We also see a long string of kernel parameters passed in via the CMD ATAG.
+
 Part two of this blog post series on will be about writing heap allocators in Rust for
 the Raspberry Pi's ARM processor using the ATAG iterator we created for this assignment.
+
 
 [1]: https://doc.rust-lang.org/std/primitive.pointer.html#method.offset
 [2]: http://www.simtec.co.uk/products/SWLINUX/files/booting_article.html#d0e428
@@ -278,3 +305,4 @@ the Raspberry Pi's ARM processor using the ATAG iterator we created for this ass
 [4]: https://doc.rust-lang.org/std/slice/fn.from_raw_parts.html
 [5]: https://doc.rust-lang.org/std/str/fn.from_utf8.html
 [6]: https://doc.rust-lang.org/std/ptr/fn.add.html
+[7]: https://mysterious.computer
