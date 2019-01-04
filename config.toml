@@ -22,6 +22,7 @@ after_dark_title = "blogarithm"
 after_dark_menu = [
     {url = "$BASE_URL", name = "home"},
     {url = "$BASE_URL/about/about", name = "about"},
+    {url = "https://digitalsushi.neocities.org/", name = "demoscene"},
 ]
 
 
