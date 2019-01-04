@@ -1,5 +1,5 @@
 +++
-title = "DRAFT: on writing an interpreter"
+title = "interpreting the simply typed lambda calculus"
 date = 2018-12-23
 +++
 
@@ -9,12 +9,12 @@ Writing Interpreters
 To implement the semantics of some programming language, an interpreter
 will consist of at least a few componenets:
 ```
-                          .---------.    .--------.     .-------------.    .-------------.
-"(fn (x: int) . x) 2" ->  |  lexer  | -> | parser | -> | type checker | -> | interpreter |
-                          '---------'    '--------'    '--------------'    '-------------'
-                           lexer.mll      parser.mly     typecheck.ml       interpreter.ml
-                                          parser.mli
-                                          ast.mli
+.---------.    .--------.     .-------------.    .-------------.
+|  lexer  | -> | parser | -> | type checker | -> | interpreter |
+'---------'    '--------'    '--------------'    '-------------'
+ lexer.mll      parser.mly     typecheck.ml       interpreter.ml
+                parser.mli
+                ast.mli
 ```
 
 This blog post is basically a write of of my work on assignment two of

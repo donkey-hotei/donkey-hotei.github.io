@@ -1,41 +1,71 @@
 +++
-title = "DRAFT: dynamic memory allocators in Rust"
+title = "dynamic memory allocation"
 date = 2018-01-03
 +++
-Welcome to part two of my CS140e blog post series, where I write down my notes as I work
+Welcome to a cs140e blog post series, where I write down my notes as I work
 through Stanford's [experimental course on operating systems in Rust][1]. Today, we're going
-to write a dynamic memory allocator in Rust so that the kernel can use data structures
-that are dynamically allocated during runtime  such as the collections `Vec` and `HashSet`. 
-Basically this is `malloc` and `free`: Rust-style. This will be less constraining than only
-being able the [stack][2] which is _bounded_ by a user-supplied slice to `StackVec`.
+to walk through creating a dynamic memory allocator in Rust so that the kernel can use data structures
+that live in the heap like the `Vec` and `HashSet` types. Think `malloc` and `free`: Rust-style.
 
-Rust 1.28 introduced a stable `#[global_allocator]` attribute that allows Rust programs to either
-set the allocator used to the system allocator as well as create new allocators which implment
-the `GlobalAlloc` trait. This is very nice for us because this means that just by properly
-[implementing][3] `alloc` and `dealloc` within our custom allocator, we'll be able to manage
-memory without having to know exactly how much memory our kernel will need at runtime.
-
-## Memory Alignment
-
-To set the stage for our memory allocators, let's first talk about a little thing that
-most programmers don't have to know about: memory-alignment. Memory alignment is a sort
-of convention for where objects are placed in memory. We say a memory address *k* is *n*-byte
-aligned if `k mod n == 0`. C's default allocator guarantees 8-byte alignment on 32-bit systems
-and 16-byte aligned on 64-bit systems. This is not without good reason. (TODO: Write reason)
-
-Signatures for `malloc` and `free` in C:
+Here are the signatures for `malloc` and `free` in C:
 
 ```c
 void * malloc(size_t size);
 void free(void * pointer);
 ```
 
-And the related signatures of `alloc` and `dealloc` in Rust's unsafe `GlobalAlloc` trait:
+And the related signatures of `alloc` and `dealloc` in Rust ([GlobalAlloc][3]):
 
 ```rust
 unsafe fn alloc(&self, _layout: Layout) -> *mut u8;
 unsafe fn dealloc(&self, _ptr: *mut u8, _layout: Layout);
 ```
+
+Later, we'll dive deeper into these type signatures.
+
+Before writing a heap allocator, "What is the heap?".
+The [Book][6] has a very good description of the characteristics of the heap and the stack
+in the ownership chapter. In summary, we can say the heap is where we put objects that are 
+_potentially_ variable and large in size and the stack consists of those objects whose size is typically
+smaller and known at runtime. Since many collection types like `HashMap` and `Vec` can
+change size during runtime, only by having a something to allocate them dynamically can
+we unlock their powers.
+
+![alt text][heap]
+
+The details will vary from system to system, but on the Raspberry Pi the heap will live
+directly after the kernel's binary in RAM. We assume that it's an area of demand-zero[^1]
+memory that begins after the uninitialized `.bss`[^2] area and moves upwards (towards higher
+addresses).
+
+## Memory Alignment
+
+```rust
+/// Align `addr` downwards to the nearest multiple of `align`.
+///
+/// The returned usize is always <= `addr.`
+///
+/// # Panics
+///
+/// Panics if `align` is not a power of 2.
+pub fn align_down(addr: usize, align: usize) -> usize {
+    assert!(align.is_power_of_two());
+
+    (addr / align) * align
+}
+
+/// Align `addr` upwards to the nearest multiple of `align`.
+///
+/// The returned `usize` is always >= `addr.`
+///
+/// # Panics
+///
+/// Panics if `align` is not a power of 2.
+pub fn align_up(addr: usize, align: usize) -> usize {
+    align_down(addr + align - 1, align)
+}
+```
+
 
 The `Layout` type describes the particular layout of a block of memory. This type has two
 getter methods `layout.size()` and `layout.align()` that return the requested size of our
@@ -71,32 +101,6 @@ addition, and subtraction, are all much easier to do (i.e: faster) than attempti
 so with non-binary powers.
 
 In a few simple lines, including an assertion that the `align` argument is a power of [two][4].
-
-```rust
-/// Align `addr` downwards to the nearest multiple of `align`.
-///
-/// The returned usize is always <= `addr.`
-///
-/// # Panics
-///
-/// Panics if `align` is not a power of 2.
-pub fn align_down(addr: usize, align: usize) -> usize {
-    assert!(align.is_power_of_two());
-
-    (addr / align) * align
-}
-
-/// Align `addr` upwards to the nearest multiple of `align`.
-///
-/// The returned `usize` is always >= `addr.`
-///
-/// # Panics
-///
-/// Panics if `align` is not a power of 2.
-pub fn align_up(addr: usize, align: usize) -> usize {
-    align_down(addr + align - 1, align)
-}
-```
 
 ## Thread Safety
 
@@ -178,7 +182,7 @@ fn memory_map() -> Option<(usize, usize)> {
     for atag in Atags::get() {
         if let Some(mem) = atag.mem() {
             return Some(
-                (mem.start as usize, (binary_end + mem.size) as usize)
+                (binary_end as usize, (binary_end + mem.size) as usize)
             );
         }
     }
@@ -191,8 +195,85 @@ It's imporant to note that the MEM ATAG reports the amount of *total system memo
 however, and not the amount of actually free memory. Our instructor has helpfully defined
 for us `binary_end` that holds the first address of memory after the kernel
 
+## Bump Allocator
+
+Our first allocator will be the *dumbest of all allocators*. Whose behavior is specfified as:
+
+1. Initialized with the pointer at the beginning of our heap space
+2. When we request to `alloc` n-bytes of memory, the `current` pointer is bumped forward
+   n-bytes (plus some alignment) and the old value of the pointer is returned.
+3. When we `dealloc` an address, nothing actually happens.
+
+Here's a diagram from the assignment's page that depicts what happens to the `current` pointer
+after a `1k` byte allocation and a subsequent `512` byte allocation. Though alignment concerns
+are abset in the diagram.
+
+![alt text][bump]
+
+We're tasked with implementing the `new()`, `alloc()`, and `dealloc()` methods of the
+`bump::Allocator` using our `align_up` and `align_down` utility functions to ensure
+proper alignment of the return address.
+
+The instructor wrote a good number of tests to run our solution against, though this is one
+of those times where the Rust core API has changed considerably enough over the past year
+that we have to make some changes to get them running. I'll document this process here for
+others taking the class years after it was first created.
+
+The first bug we run into is related to a missing module `raw_vec` that supposedly contains `RawVec`:
+
+```rust
+error[E0432]: unresolved import `core::alloc::raw_vec`
+  --> src/allocator/tests.rs:63:22
+     |
+     63 |     use core::alloc::raw_vec::RawVec;
+        |                      ^^^^^^^ could not find `raw_vec` in `alloc`
+```
+
+Looking for `RawVec` in the standard documentation yielded no results though checking out
+the official Rust repo we see a `RawVec` [implementation][8] in liballoc with the `#![doc(hidden)]`
+attribute, which is why it doesn't appear in the doucmentation.
+
+## Using the Allocator
+
+Rust 1.28 introduced a stable `#[global_allocator]` attribute that allows Rust programs to either
+set the allocator used to the system allocator as well as create new allocators which implment
+the `GlobalAlloc` trait. This is very nice for us because this means that just by properly
+[implementing][3] `alloc` and `dealloc` within our custom allocator, we'll be able to manage
+memory without having to know exactly how much memory our kernel will need at runtime.
+
+
+
+[^1]: A region (or page, though we haven't implemented paging yet) of memory that's mapped
+to an anonymous file. It's _demand-zero_ because no data is actually transferred and s.t.
+their sizes are initially zero.
+```
+[Sections]
+00 0x00000000     0 0x00000000     0 -----
+01 0x000000c0 20860 0x00080000 20860 --r-x .text
+02 0x00005240  6066 0x00085180  6066 --r-- .rodata
+03 0x00006a00  2848 0x00086940  2848 --rw- .data
+04 0x00000000     0 0x00087460     0 --rw- .bss       <-- demand-zero
+05 0x00007520  5976 0x00000000  5976 ----- .symtab
+06 0x00008c78  6233 0x00000000  6233 ----- .strtab
+07 0x0000a4d1    52 0x00000000    52 ----- .shstrtab
+08 0x000000c0 29792 0x00080000 29792 m-rwx LOAD0
+09 0x00000000     0 0x00000000     0 m-rw- GNU_STACK  <-- demand-zero
+10 0x00000000    64 0x00080000    64 m-rw- ehdr
+
+```
+
+[^2]: As per [wikipedia][7]: "The name .bss is used by many compilers and linkers for the portion
+of the executable file containing _statically-allocated variables_ that are not explicitly initialized
+to any value."
+
 [1]: https://web.stanford.edu/class/cs140e
 [2]: https://github.com/donkey-hotei/cs140e/blob/1102a214a1f4d2254a761ac8551db45db9c7f216/1-shell/stack-vec/src/lib.rs
 [3]: https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html
 [4]: https://doc.rust-lang.org/std/primitive.usize.html#method.is_power_of_two
 [5]: https://mysterious.computer/safely-exposing-unsafe-api
+[6]: https://doc.rust-lang.org/book/ch04-01-what-is-ownership.html?highlight=stack,and,heap#the-stack-and-the-heap 
+[7]: https://en.wikipedia.org/wiki/.bss
+[8]: https://github.com/rust-lang/rust/blob/master/src/liballoc/raw_vec.rs
+
+[heap]: https://i.ibb.co/BCzK1cN/Selection-367.png#center
+[bump]: https://web.stanford.edu/class/cs140e/assignments/2-fs/images/bump-diagram.svg

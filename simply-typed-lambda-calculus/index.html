@@ -26,7 +26,7 @@
 
 <article itemscope itemtype="http://schema.org/BlogPosting">
     <header>
-        <h1 itemprop="headline">DRAFT: on writing an interpreter</h1>
+        <h1 itemprop="headline">interpreting the simply typed lambda calculus</h1>
         <span class="muted">
     <svg style="margin-bottom:-3px" class="i-clock" viewBox="0 0 32 32"
          width="16" height="16" fill="none" stroke="currentcolor"
@@ -49,12 +49,12 @@
 <p>To implement the semantics of some programming language, an interpreter
 will consist of at least a few componenets:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#c0c5ce;">                          </span><span style="color:#c0c5ce;">.---------.    .--------.     .-------------.    .-------------.
-</span><span style="color:#c0c5ce;">&quot;(fn (x: int) . x) 2&quot; -&gt;  |  lexer  | -&gt; | parser | -&gt; | type checker | -&gt; | interpreter |
-</span><span style="color:#c0c5ce;">                          </span><span style="color:#c0c5ce;">&#39;---------&#39;    &#39;--------&#39;    &#39;--------------&#39;    &#39;-------------&#39;
-</span><span style="color:#c0c5ce;">                           </span><span style="color:#c0c5ce;">lexer.mll      parser.mly     typecheck.ml       interpreter.ml
-</span><span style="color:#c0c5ce;">                                          </span><span style="color:#c0c5ce;">parser.mli
-</span><span style="color:#c0c5ce;">                                          </span><span style="color:#c0c5ce;">ast.mli
+<span style="color:#c0c5ce;">.---------.    .--------.     .-------------.    .-------------.
+</span><span style="color:#c0c5ce;">|  lexer  | -&gt; | parser | -&gt; | type checker | -&gt; | interpreter |
+</span><span style="color:#c0c5ce;">&#39;---------&#39;    &#39;--------&#39;    &#39;--------------&#39;    &#39;-------------&#39;
+</span><span style="color:#c0c5ce;"> </span><span style="color:#c0c5ce;">lexer.mll      parser.mly     typecheck.ml       interpreter.ml
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">parser.mli
+</span><span style="color:#c0c5ce;">                </span><span style="color:#c0c5ce;">ast.mli
 </span></pre>
 <p>This blog post is basically a write of of my work on assignment two of
 Stanford's CS242 class, where we'll explore the process of writing an
