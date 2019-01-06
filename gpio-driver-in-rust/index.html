@@ -34,7 +34,7 @@
         <circle cx="16" cy="16" r="14"/>
         <path d="M16 8 L16 16 20 20"/>
     </svg>
-    <span>8 minute read</span>
+    <span>24 minute read</span>
     <svg style="margin-bottom: -3px" class="i-edit" viewBox="0 0 32 32"
          width="16" height="16" fill="none" stroke="currentcolor"
          stroke-linecap="round" stroke-linejoin="round" stroke-width="6.25%">
@@ -64,16 +64,17 @@ with their type as natural numbers, abbreviated as <code>nat</code> - maybe writ
 the type like <code>42: nat</code><sup class="footnote-reference"><a href="#2">1</a></sup>. Whereas
 a term like <code>1 / 2</code> is an invalid expression for <code>nat</code> types but a valid rational number, which
 is another type.</p>
-<p>For a natural language, like English, we have terms with types whose composition is defined
-by the grammar. We can say that <code>cold</code> is of the adjective type and <code>beer</code> is of the <code>noun</code>
-type with our grammar saying we must put adjectives <em>before</em> the nouns, thus &quot;cold beer&quot; is
-a valid expression while &quot;beer cold&quot; is a nonsensical one.</p>
+<p>For a natural language, like English, we have terms with types whose composition in a sentence is defined
+by the English grammar. We can say that <code>cold</code> is of the adjective type and <code>beer</code> is of the <code>noun</code>
+type with our grammar saying we must put adjectives <em>before</em> the nouns, so &quot;cold beer&quot; is
+a valid expression while &quot;beer cold&quot; is a &quot;nonsensical&quot;.</p>
 <p>The mathematical notion of the &quot;type&quot; grew out of some apparent inconsistencies in the foundations
-of mathematics. Bertrand Russel wrote of the &quot;theories of type&quot; back in 1802 as a way to patch a version of
-<a href="https://en.wikipedia.org/wiki/Naive_set_theory">naive set theory</a> that was afflicted with <a href="https://en.wikipedia.org/wiki/Russell%27s_paradox">Russel's paradox</a>. The details of this are beyond
+of mathematics. Bertrand Russel wrote of the &quot;theories of type&quot; back in 1802 as a way to remediate a version of
+<a href="https://en.wikipedia.org/wiki/Naive_set_theory">naive set theory</a> that was afflicted with <a href="https://en.wikipedia.org/wiki/Russell%27s_paradox">Russel's paradox</a>. The details of all this are beyond
 the scope of this article, but we'll address the more common usage of what we mean by a &quot;type theory&quot; when we
-explore Alonzo Church's simply typed lambda calculus in <a href="https://mysterious.computer/simply-type-lambda-calculus">another post</a></p>
-<p>The theory of types as created by Russel was a new logical language different from set theory
+explore Alonzo Church's simply typed lambda calculus in <a href="https://mysterious.computer/simply-type-lambda-calculus">another post</a>. <a href="https://github.com/rust-lang/rfcs/blob/master/text/0243-trait-based-exception-handling.md">This</a> is another great resource
+for you type-freaks out there.</p>
+<p>What's interesting is that the theory of types as created by Russel was a <em><em>new logical language different from set theory</em></em>
 where concepts like &quot;and&quot; and &quot;or&quot; and &quot;maybe&quot;, found in the predicate logic set theory was
 built upon, can be encoded into the types of the type system itself. See the wikipedia post on
 <a href="https://en.wikipedia.org/wiki/Typestate_analysis">type theory</a> for how concepts in set theory find their counterpart in the theory of types.</p>
@@ -85,19 +86,22 @@ when compiled and type checked are themselves sort of proofs of their correctnes
 <p>Cool. So, what are some sorts of things that can be encoded in a type system?</p>
 <h2 id="type-states">Type States</h2>
 <p>There are many things we can encode into a type system, here we're going to jump beyond numbers, pairs, booleans,
-sum and product and types, and the like, and talk about something a little more arcane: type states.</p>
-<p>So, what exactly is a  <em>type state</em>? Informally said, they are, as you might think, the idea that we can ascribe
-a given set of states to some type. Where we say that some object with some type is always in one of the type states
+algebraic types, and the like, and instead talk about something a little more arcane: type states.</p>
+<p>So, what exactly is a  <em>type state</em>? If you've ever studied a couple of nice <a href="http://foldoc.org/finite+state+machine">finite state machines</a> then the concept is
+just that: types states are a way for us encode finite state automata into a type system. They are, as
+you might think, the idea that we can ascribe a given set of states to some type. Where we say that some object with some type
+is always in one of the type states
 associated with that type. To move from one type state to another we perform some operation thats <em>allowable</em> on that
-type in the given type state that it's in. These operations<sup class="footnote-reference"><a href="#3">2</a></sup>, for a type with type states, when done one after the
-other effectively act a series of <em>state transitions</em> (coercions) between states (types) and thus form a kind of finite state machine,
+type in the given type state that it's in. These operations<sup class="footnote-reference"><a href="#3">2</a></sup> <em>when done one after the
+other</em> effectively act a series of <em>state transitions</em> (coercions) between (type)states and thus form a kind of finite state machine,
 allowing us to keep track of the state that some statefully typed object is in.</p>
-<p>In a large sense, <em>type states</em> also allow us to keep track of the <em>order</em> in which certain operations are made on an object.</p>
-<p>To illustrate why this is a useful idea, let's make this more concrete with a practical example:</p>
-<p>Say we have a <code>File</code> type, with three states: &quot;uninitialized&quot;, &quot;opened&quot; and &quot;closed&quot;. The state machine could be drawn something like:</p>
+<p>In brief, <em>type states</em> also allow us to keep track of the <em>order</em> in which certain operations are made on an object.</p>
+<p>To illustrate why this is a useful idea, let's make this more concrete with a practical example borrowed from David Teller's
+<a href="https://yoric.github.io/post/rust-typestate/">article</a> on type states in Rust:</p>
+<p>Say we have a <code>File</code> type, with three states: &quot;initialized&quot;, &quot;opened&quot; and &quot;closed&quot;. The state machine could be drawn something like:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">.---------------. open  .--------. close  .--------.
-</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">| uninitialized | ----&gt; | opened | -----&gt; | closed |
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">|  initialized  | ----&gt; | opened | -----&gt; | closed |
 </span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">&#39;---------------&#39;       &#39;--------&#39;        &#39;--------&#39;
 </span><span style="color:#c0c5ce;">                                  </span><span style="color:#c0c5ce;">^    |
 </span><span style="color:#c0c5ce;">                                  </span><span style="color:#c0c5ce;">`----&#39;
@@ -105,11 +109,10 @@ allowing us to keep track of the state that some statefully typed object is in.<
 </span></pre>
 <p>A <code>File</code> can't be read unless it has been opened, we also can't seek to a part of the
 file unless it is open, nor can we close an unopened file. Though, once the file is
-open we can do those things, and then close when finished. To borrow from David Teller's
-<a href="https://yoric.github.io/post/rust-typestate/">example</a>, let's show what this would look like in Rust:</p>
+open we can do those things, and then close when finished. Here's the Rust code:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">read_file</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">path</span><span style="color:#c0c5ce;">: &amp;Path) -&gt; String {
-</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> file = File::open(path);
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> file = File::new(path);
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// opening the file _could_ fail
 </span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">open</span><span style="color:#c0c5ce;">();
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// invalid read() if file failed to open
@@ -123,11 +126,15 @@ open we can do those things, and then close when finished. To borrow from David 
 <p>How can we ensure that this kind of behavior is caught by the Rust compiler? Luckily for us
 we can exploit Rust's <a href="https://en.wikipedia.org/wiki/Substructural_type_system#Affine_type_systems">affline type system</a> to leverage the use of it's special <em>move semantics</em>.
 If you haven't already read the <a href="https://doc.rust-lang.org/book/second-edition/ch04-00-understanding-ownership.html">Book</a>, at least as much of it s.t. you understand
-the basic ideas behind ownership and borrowing, and what the <code>Drop</code> trait is - now would be a good
-time to do so.</p>
+the basic ideas behind ownership and borrowing, that's always a good thing
+to do but, it's not totally necessary here minus some syntax.</p>
 <p>Here's the implementation of our <code>File</code>:</p>
 <pre style="background-color:#2b303b;">
-<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">File {
+<span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">File { </span><span style="color:#bf616a;">path</span><span style="color:#c0c5ce;">: Path, </span><span style="color:#bf616a;">cursor</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">is_open</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">bool </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">File {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">new</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">path</span><span style="color:#c0c5ce;">: &amp;Path) { File { path, cursor: </span><span style="color:#d08770;">0</span><span style="color:#c0c5ce;">, is_open: </span><span style="color:#d08770;">false </span><span style="color:#c0c5ce;">} }
+</span><span style="color:#c0c5ce;">
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// NOTE: Here we&#39;re using the venerable `Result` type which gives the postfix &quot;?&quot; operator
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">//       that allows us to propagate errors if, say, any operations on the file fail.
 </span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">open</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">path</span><span style="color:#c0c5ce;">: &amp;Path) -&gt; Result&lt;File, Error&gt; {
@@ -153,8 +160,8 @@ time to do so.</p>
 </span><span style="color:#c0c5ce;">}
 </span></pre>
 <p>As you can see, depending on how we use references and Rust's move semantics by passing <code>self</code>,
-<code>&amp;self</code>, or <code>&amp;mut self</code> to the various <code>File</code> operations we are trivially informing Rust of
-a <code>File</code>'s type states and they can be enforced at compile-time.</p>
+<code>&amp;self</code>, or <code>&amp;mut self</code> to the various <code>File</code> operations we are trivially informing the Rust compiler,
+through the <a href="https://www.reddit.com/r/rust/comments/5ny09j/tips_to_not_fight_the_borrow_checker/dcf9zdv">borrow checker</a>, of a <code>File</code>'s type states and how they should be enforced at compile-time.</p>
 <p>Let's go about implementing <code>Drop</code> for our <code>File</code> before re-evaluating the type checker's reaction to <code>read_file()</code>:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Drop </span><span style="color:#b48ead;">for </span><span style="color:#c0c5ce;">File {
@@ -170,14 +177,21 @@ possiblity of <code>read()</code>'ing a file that hasn't been opened or <code>se
 already been closed:</p>
 <pre style="background-color:#2b303b;">
 <span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">read_file</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">path</span><span style="color:#c0c5ce;">: &amp;Path) -&gt; String {
-</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> file = File::open(path);
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> file = File::new(path);
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// opening the file _could_ fail, so we now use &quot;?&quot; to catch the exception.
 </span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">open</span><span style="color:#c0c5ce;">()?;
 </span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// if opening the file failed, then we never reach this line.
 </span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> data = file.</span><span style="color:#96b5b4;">read</span><span style="color:#c0c5ce;">()?;
 </span><span style="color:#c0c5ce;">
-</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">close</span><span style="color:#c0c5ce;">();
-</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// ERROR! Which is now caught by the compiler.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let mut</span><span style="color:#c0c5ce;"> scoped_file = File::new(path);
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">open</span><span style="color:#c0c5ce;">()?;
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">read</span><span style="color:#c0c5ce;">()?; </span><span style="color:#65737e;">// valid if no runtime error, still open
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">} </span><span style="color:#65737e;">// scoped_file falls out of scope, but is Drop so closes
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">close</span><span style="color:#c0c5ce;">(); </span><span style="color:#65737e;">// valid, as file&#39;s in the &quot;open&quot; state.
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// ERROR! Now statically caught by the compiler.
 </span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">file.</span><span style="color:#96b5b4;">seek</span><span style="color:#c0c5ce;">(Seek::Start);
 </span><span style="color:#c0c5ce;">
 </span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">data
@@ -201,11 +215,413 @@ that doesn't implement <code>Copy</code> it is an <em><em>affline type</em></em>
 <p>Affine types are a version of linear types allowing to discard (i.e. not use) a resource, corresponding to affine logic. An affine resource <em>can only be used once</em>, while a linear one must be used once.</p>
 </blockquote>
 <p>And thus, by passing the <code>File</code> resource by value, we have effectively <em>moved</em> it, or <em>transferred ownership</em> of that resource
-to the <code>close()</code> method. As a perhaps trivial way of using this unique (and yet pragmatic) type system to enforce type states,
+to the <code>close()</code> method. As a perhaps trivial way of using this unique and pragmatic type system to enforce type states,
 it's possible to ensure that no <code>File</code> is ever acted on after it's been closed.</p>
-<p>Let's finally move into a more complex example involving the the hardware target</p>
-<p>The GPIO subsystem of the Raspberry Pi is documented on page 89 (section 6) of the
-<a href="https://web.stanford.edu/class/cs140e/docs/BCM2837-ARM-Peripherals.pdf">BCM2837 ARM Peripherals Manual</a></p>
+<p>Though, let's note, that we've encoded the type system <em>implicitly</em> in Rust's move semantics for a simple example that was amenable to that.
+Can we be more explicit that what we're dealing with are <em>type states</em>?</p>
+<p>We can. Let's finally move into a more complex example, which calls for something a little more than typed moves and
+offers a more real-life example where one would not want to live without type states which
+involves our beloved little hardware target: the Raspberry Pi.</p>
+<h2 id="bcm2835-arm-peripherals">BCM2835 ARM Peripherals</h2>
+<p>Before diving back into Rust-world we'll try to cultivate some basic way of thinking about hardware as a state machine as well as
+go into some details on the GPIO subsystem of the BCM2835 ARM processor seen on the Raspberry Pi 3.</p>
+<p>The &quot;General Purpose Input Output&quot; subsystem of the Raspberry Pi is documented on page 89 (section 6) of the
+<a href="https://web.stanford.edu/class/cs140e/docs/BCM2837-ARM-Peripherals.pdf">BCM2837 ARM Peripherals Manual</a>. These are the external pins that folks usually use to interface with
+other computers and electronic gizmos.</p>
+<p>The vertical pin layout of the GPIO pins, courtesy of <a href="https://www.reddit.com/r/rust/comments/5ny09j/tips_to_not_fight_the_borrow_checker/dcf9zdv">tvierb</a> :</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">                                </span><span style="color:#c0c5ce;">J8
+</span><span style="color:#c0c5ce;">                               </span><span style="color:#c0c5ce;">.___.
+</span><span style="color:#c0c5ce;">                      </span><span style="color:#c0c5ce;">+3V3---1-|O O|--2--+5V
+</span><span style="color:#c0c5ce;">              </span><span style="color:#c0c5ce;">(SDA)  GPIO2---3-|O O|--4--+5V
+</span><span style="color:#c0c5ce;">             </span><span style="color:#c0c5ce;">(SCL1)  GPIO3---5-|O O|--6--_
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">(GPIO_GLCK)  GPIO4---7-|O O|--8-----GPIO14 (TXD0)
+</span><span style="color:#c0c5ce;">                          </span><span style="color:#c0c5ce;">_--9-|O.O|-10-----GPIO15 (RXD0)
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">(GPIO_GEN0) GPIO17--11-|O O|-12-----GPIO18 (GPIO_GEN1)
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">(GPIO_GEN2) GPIO27--13-|O O|-14--_
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">(GPIO_GEN3) GPIO22--15-|O O|-16-----GPIO23 (GPIO_GEN4)
+</span><span style="color:#c0c5ce;">                      </span><span style="color:#c0c5ce;">+3V3--17-|O O|-18-----GPIO24 (GPIO_GEN5)
+</span><span style="color:#c0c5ce;">         </span><span style="color:#c0c5ce;">(SPI_MOSI) GPIO10--19-|O.O|-20--_
+</span><span style="color:#c0c5ce;">         </span><span style="color:#c0c5ce;">(SPI_MOSO) GPIO9 --21-|O O|-22-----GPIO25 (GPIO_GEN6)
+</span><span style="color:#c0c5ce;">         </span><span style="color:#c0c5ce;">(SPI_SCLK) GPIO11--23-|O O|-24-----GPIO8  (SPI_C0_N)
+</span><span style="color:#c0c5ce;">                          </span><span style="color:#c0c5ce;">_-25-|O O|-26-----GPIO7  (SPI_C1_N)
+</span><span style="color:#c0c5ce;">           </span><span style="color:#c0c5ce;">(EEPROM) ID_SD---27-|O O|-28-----ID_SC Reserved for ID EEPROM
+</span><span style="color:#c0c5ce;">                    </span><span style="color:#c0c5ce;">GPIO5---29-|O.O|-30--_
+</span><span style="color:#c0c5ce;">                    </span><span style="color:#c0c5ce;">GPIO6---31-|O O|-32-----GPIO12
+</span><span style="color:#c0c5ce;">                    </span><span style="color:#c0c5ce;">GPIO13--33-|O O|-34--_
+</span><span style="color:#c0c5ce;">                    </span><span style="color:#c0c5ce;">GPIO19--35-|O O|-36-----GPIO16
+</span><span style="color:#c0c5ce;">                    </span><span style="color:#c0c5ce;">GPIO26--37-|O O|-38-----GPIO20
+</span><span style="color:#c0c5ce;">                          </span><span style="color:#c0c5ce;">_-39-|O O|-40-----GPIO21
+</span><span style="color:#c0c5ce;">                               </span><span style="color:#c0c5ce;">&#39;---&#39;
+</span><span style="color:#c0c5ce;">                           </span><span style="color:#c0c5ce;">40W 0.1&quot; PIN HDR
+</span></pre>
+<p>As mentioned in the manual, there are 54 pins total split into two banks. It's said that each of these pins
+have at least two &quot;alternative functions&quot;, which, in plain English, is really just a way of saying &quot;each of these pins can act
+as an <em>input</em> or an <em>output</em>, but some can do other things like UART, SPI, &amp;c&quot;.</p>
+<p>You can see which pins above likely support some of the other special alternative functions in the pinout above.</p>
+<p>To select a pin we'd like to use, and it's function, we look at a the right <code>FSEL</code> (function select)
+register for our pin and flip the right bits. The layout of an <code>FSEL</code> register looks like this:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">pin #:        9   9   9   8   8   8         0   0   0
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.___.___.___.___.___.___.____ .___.___.___.
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">| 1 | 0 | 1 | 0 | 0 | 0 | ... | 0 | 0 | 0 |
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">&#39;---&#39;---&#39;---&#39;---&#39;---&#39;---&#39;-----&#39;---&#39;---&#39;---&#39;
+</span></pre>
+<p>With three bits being dedicated to each pin, allowing allows at most 10 pins per <code>GPFSELn</code> register (32-bits total)
+with at least two left unused.</p>
+<p>With the three bits associated to our pin found, we set the function of this pin by using the corresponding bit
+pattern. As per the manual we have:</p>
+<ul>
+<li><code>000</code> for output</li>
+<li><code>001</code> for input`</li>
+<li><code>100</code> for alternate function zero</li>
+<li><code>101</code> for alternate function one</li>
+<li>so and and so forth like, <code>110</code>, <code>111</code>, <code>011</code>, or <code>010</code> for the rest up to alt. function 5.</li>
+</ul>
+<p>To set and clear pins (on or off) that have been set as outputs  we check out the <code>SET</code> and <code>CLR</code> registers (two of each to
+cover every pin) and flip the corresponding bit (1st pin has 1st rightmost bit in the first
+register, the 33rd pin as the 1st rightmost bit in the second register).</p>
+<p>To check the level of a pin that's been set as an input we check the <code>LVL</code> register to check if the voltage on that
+pin is low or high.</p>
+<p>Now the state machine is begining to float out of the screen... Output pins can be <em>set</em> and <em>cleared</em> and input pins
+can only be used to <em>read</em> the voltage level at that pin. We wouldn't want to break the specification by reading the
+levels of an output pin, or attempting to set and clear a pin the ARM thinks is an input, would we? We'd like to be able to write
+our driver with these concerns out of the way, and to allow others to use the public API of our driver to play with the
+Pi's GPIO at a low-level without worry that they may be about to run software that puts the hardware into an invalid state.</p>
+<p>All of the code we'll see here lives in my <a href="https://github.com/donkey-hotei/cs140e/blob/master/os/pi/src/gpio.rs">solution repo</a> for the course. Let's break it down piece-by-piece and take a
+deep-dive into Rust and driver internals:</p>
+<h2 id="gpio-driver-implementation">GPIO Driver Implementation</h2>
+<h3 id="top-level-imports">Top-level imports</h3>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">common::{</span><span style="color:#d08770;">IO_BASE</span><span style="color:#c0c5ce;">, states};
+</span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">volatile::prelude::*;
+</span><span style="color:#b48ead;">use </span><span style="color:#c0c5ce;">volatile::{Volatile, WriteVolatile, ReadVolatile, Reserved};
+</span></pre>
+<p>Hardware devices communicate with software through <em>memory-mapped I/O</em> where their functionality
+is revealed through a certain set of memory addresses. The data-sheet we were reading above gives
+us a specification for what will happen to the device when we read or write to certain addresses
+in memory. <code>IO_BASE</code> gives us the base, or start, address of where the Pi's I/O peripherals are
+mapped to. The GPIO registers exist at an offset from that base addresss.</p>
+<p><code>Volatile</code>, <code>WriteVolatile</code>, <code>ReadVolatile</code>, and <code>Reserved</code> are all pointer types that we'll go into
+the details of in another post that will be about exposing unsafe code safely in Rust. Suffice to say, these are pointer
+types that come with certain static guarantees about what you can and cannot do to the pointer-type (address) that it wraps (points-to).
+For example, the compiler will complain if you try to apply a bit-mask to a <code>ReadVolatile</code> pointer since it's
+a read-only pointer and doesn't have any operations on it that allow writes.</p>
+<h3 id="functions-and-registers">Functions and Registers</h3>
+<p>Here we encode the available functions into Rust's tagged-union type: the <code>enum</code>.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// An alternative GPIO function.
+</span><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">repr</span><span style="color:#c0c5ce;">(u8)]
+</span><span style="color:#b48ead;">pub enum </span><span style="color:#c0c5ce;">Function {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Input  = </span><span style="color:#d08770;">0b000</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Output = </span><span style="color:#d08770;">0b001</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Alt0   = </span><span style="color:#d08770;">0b100</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Alt1   = </span><span style="color:#d08770;">0b101</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Alt2   = </span><span style="color:#d08770;">0b110</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Alt3   = </span><span style="color:#d08770;">0b111</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Alt4   = </span><span style="color:#d08770;">0b011</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Alt5   = </span><span style="color:#d08770;">0b010
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Now we can use the various <code>Function</code>s like <code>Function::Input</code> or <code>Function::Output</code> as, for example arguments to
+functions that take the <code>Function</code> type as an argument, and bit patterns will be substitued in. Nice start!</p>
+<p><code>repr</code> is a macro described in the <a href="https://doc.rust-lang.org/nomicon/repr-rust.html">nomicon</a> that affects the data layout, or alignment,
+of the type we're defining. Here, with <code>repr(u8)</code>, we're saying, &quot;any variant of <code>Function</code> must be aligned to 8 bits&quot;
+(i.e: each variant lives 8-bits apart from the next). There are <a href="https://doc.rust-lang.org/nomicon/other-reprs.html">many other</a> <code>repr</code>s and the one's being
+used here come from <a href="https://github.com/rust-lang/rfcs/blob/master/text/2195-really-tagged-unions.md">RFC2195</a> on the feature called &quot;Really Tagged Unions&quot;. This is cool because enums aren't a
+concept in C, yet we can still leverage high-level programming with a strongly typed language on bare metal...</p>
+<p>Next we write out the relevant GPIO registers and type their pointers with the access-controlled
+pointer types we got from the <code>volatile</code> crate, as per the spec:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">repr</span><span style="color:#c0c5ce;">(C)]
+</span><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">allow</span><span style="color:#c0c5ce;">(non_snake_case)]
+</span><span style="color:#b48ead;">struct </span><span style="color:#c0c5ce;">Registers {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">FSEL</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 6],      </span><span style="color:#65737e;">// function select register
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r0</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">SET</span><span style="color:#c0c5ce;">: [WriteVolatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],  </span><span style="color:#65737e;">// set register
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r1</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">CLR</span><span style="color:#c0c5ce;">: [WriteVolatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],  </span><span style="color:#65737e;">// clear register
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r2</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">LEV</span><span style="color:#c0c5ce;">: [ReadVolatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],   </span><span style="color:#65737e;">// level register
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r3</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">EDS</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r4</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">REN</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r5</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">FEN</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r6</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">HEN</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r7</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">LEN</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r8</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">AREN</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r9</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">AFEN</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">__r10</span><span style="color:#c0c5ce;">: Reserved&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">PUD</span><span style="color:#c0c5ce;">: Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">PUDCLK</span><span style="color:#c0c5ce;">: [Volatile&lt;</span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">&gt;; 2],
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p><code>repr(C)</code> tells Rust compiler to do what C does - the layout seen will be exactly as you'd
+expect in C(++) with each field stored right-after-the-other and not optimized all over the place.</p>
+<p><code>allow(non_snake_case)</code> disables the snake-case lint on field-members so we can use all capitol letters to
+name our registers - feels appropriate.</p>
+<p>The layout of the registers is just as is described in the manual. The syntax <code>[Volatile&lt;u32&gt;; 6]</code>
+says, &quot;here lives six 32-bit pointers that we expect to be able to read and write to&quot;.</p>
+<h3 id="stateful-gpio">Stateful GPIO</h3>
+<p>So, far we know that a pin can be either an <code>input</code> or an <code>output</code> or one of the <code>alt</code> functions.
+Okay so that means when a pin is in one of these states it can only do certain things. In what order
+can change the state of a pin, and what can we do at each state? Let's draw out the simple-transition
+diagram of our upcoming <code>Gpio</code> type.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">                                              </span><span style="color:#c0c5ce;">.~-----.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">.---------------.  Function::Input   .---------. | level
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">| uninitialized |------------------&gt; |  Input  |&lt;&#39;
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">&#39;---------------&#39;                    `---------&#39;
+</span><span style="color:#c0c5ce;">      </span><span style="color:#c0c5ce;">|       |   Function::Output    .---------.
+</span><span style="color:#c0c5ce;">      </span><span style="color:#c0c5ce;">|        `--------------------&gt; |  Output | -.
+</span><span style="color:#c0c5ce;">      </span><span style="color:#c0c5ce;">|   Function::Alt  .-----.      `---------&#39;  |  set/clear
+</span><span style="color:#c0c5ce;">       </span><span style="color:#c0c5ce;">`---------------&gt; | Alt |             ^.____/
+</span><span style="color:#c0c5ce;">                         </span><span style="color:#c0c5ce;">`-----&#39;
+</span></pre>
+<p>It would be pretty difficult to encode this state machine using a series of typed moves only,
+we need this <em>and something more</em>. Here is our <code>Gpio</code> type, as of now, plain and simple:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Gpio {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">pin</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">registers</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">&#39;static mut</span><span style="color:#c0c5ce;"> Registers,
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>We have a byte-size <code>pin</code> field and mutable reference to the GPIO <code>Registers</code> type that has a <code>static</code>
+lifetime. This is to say that this mutable reference lives for entire life time of the program.</p>
+<p>In Rust we can parameterize container types with the other generic types it contains. For example,
+<code>Vec&lt;T&gt;</code> is a vector-type in rust that takes some generic type <code>T</code> so it could be concretized as
+either <code>Vec&lt;u8&gt;</code>, for a vector of <code>u8</code>'s or as <code>Vec&lt;Vec&lt;char&gt;&gt;</code> as a vector of vectors of <code>char</code>s.</p>
+<p>What if we could parameterize the <code>Gpio</code> type with its associated state? Just as marker, not be
+used. Like so,</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Gpio&lt;State&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">pin</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">registers</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">&#39;static mut</span><span style="color:#c0c5ce;"> Registers,
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>When running this definition through the Rust compiler, we'd receive the error:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#c0c5ce;">error[E0392]: parameter `State` is never used
+</span><span style="color:#c0c5ce;">--&gt; src/lib.rs:1:17
+</span><span style="color:#c0c5ce;">  </span><span style="color:#c0c5ce;">|
+</span><span style="color:#c0c5ce;">1 | pub struct Gpio&lt;State&gt; {
+</span><span style="color:#c0c5ce;">  </span><span style="color:#c0c5ce;">|                 ^^^^^ unused type parameter
+</span><span style="color:#c0c5ce;">  </span><span style="color:#c0c5ce;">|
+</span><span style="color:#c0c5ce;">  </span><span style="color:#c0c5ce;">= help: consider removing `State` or using a marker such as `std::marker::PhantomData`
+</span></pre>
+<p>Ah, interesting! So, we really do have to <em>use</em> the type parameter and the compiler will
+always complain if we paramterize something on a type and don't make use of it. Nice, but
+we still want to <em>mark</em> or <code>Gpio</code> pin with it's state and... and what's this... <code>PhantomData</code>!?</p>
+<h3 id="phantomdata-of-the-opera">PhantomData of the opera</h3>
+<p>Many of those who lived a life programming in strongly-typed functional languages will be
+familiar with the concept of <a href="https://wiki.haskell.org/Phantom_type">phantom data types</a>. The word &quot;phantom&quot; seems to imply something
+that is seen but doesn't actually exists. In fact, this is exactly the kind of phantom types do for
+our type system. It's a parameterized &quot;marker&quot; type that isn't actually used, so we can use it
+to inform the type system so that we can parameterize our own types and not use the types their
+parameterized on for anything other than as a marker. Very cool.</p>
+<p>Our new definition of the <code>Gpio</code> type as it's parameterized on <code>State</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// A GPIO pin in state `State`.
+</span><span style="color:#65737e;">///
+</span><span style="color:#65737e;">/// The `State` generic always corresponds to an uninstantiatable type that is
+</span><span style="color:#65737e;">/// use solely to mark and track the state of a given GPIO pin. A `Gpio`
+</span><span style="color:#65737e;">/// structure starts in the `Uninitialized` state and must be transitioned into
+</span><span style="color:#65737e;">/// one of `Input`, `Output`, or `Alt` via the `into_input`, `into_output`, and
+</span><span style="color:#65737e;">/// `into_alt` methods before it can be used.
+</span><span style="color:#b48ead;">pub struct </span><span style="color:#c0c5ce;">Gpio&lt;State&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">pin</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">registers</span><span style="color:#c0c5ce;">: &amp;</span><span style="color:#b48ead;">&#39;static mut</span><span style="color:#c0c5ce;"> Registers,
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">_state</span><span style="color:#c0c5ce;">: PhantomData&lt;State&gt;
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Okay - let's write our states. Since we plan for these to just be markers, we'll never
+instantiate them. Sounds like a use case for a fieldless enum with no variants like:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">pub enum </span><span style="color:#c0c5ce;">Uninitialized { };
+</span><span style="color:#b48ead;">pub enum </span><span style="color:#c0c5ce;">Input { };
+</span><span style="color:#b48ead;">pub enum </span><span style="color:#c0c5ce;">Output { };
+</span><span style="color:#c0c5ce;">put </span><span style="color:#b48ead;">enum </span><span style="color:#c0c5ce;">Alt { };
+</span></pre>
+<p>Or, with a macro in place to generate our enums for us:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// Generates `pub enums` with no variants for each `ident` passed in.
+</span><span style="color:#b48ead;">pub </span><span style="background-color:#bf616a;color:#2b303b;">macro</span><span style="color:#c0c5ce;"> </span><span style="color:#96b5b4;">states</span><span style="color:#c0c5ce;">($(</span><span style="color:#bf616a;">$name</span><span style="color:#c0c5ce;">:ident),*) {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">$(</span><span style="color:#b48ead;">pub enum </span><span style="color:#bf616a;">$name </span><span style="color:#c0c5ce;">{  })*
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>We can define our states cleanly like:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// Possible states for a GPIO pin.
+</span><span style="color:#c0c5ce;">states! {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">Uninitialized, Input, Output, Alt
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>And the methods that correspond to each state:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Gpio&lt;Output&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Sets (turns on) the pin.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">set</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#65737e;">// two banks, anything below pin 32 is in the first bank (either 0 or 1).
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> index = (</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin / </span><span style="color:#d08770;">32</span><span style="color:#c0c5ce;">) as </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">        </span><span style="color:#65737e;">// if in the first bank then pin 0 is in bit 0, if in bank two then
+</span><span style="color:#c0c5ce;">        </span><span style="color:#65737e;">// 32nd bit is at bit 0, and (32 - 32 == 0).
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> shift = </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin as </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">- index * </span><span style="color:#d08770;">32</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.</span><span style="color:#d08770;">SET</span><span style="color:#c0c5ce;">[index]
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">write</span><span style="color:#c0c5ce;">(</span><span style="color:#d08770;">1 </span><span style="color:#c0c5ce;">&lt;&lt; shift);
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Clears (turns off) the pin.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">clear</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> index = (</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin / </span><span style="color:#d08770;">32</span><span style="color:#c0c5ce;">) as </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> shift = </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin as </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">- index * </span><span style="color:#d08770;">32</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.</span><span style="color:#d08770;">CLR</span><span style="color:#c0c5ce;">[index]
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">write</span><span style="color:#c0c5ce;">(</span><span style="color:#d08770;">1 </span><span style="color:#c0c5ce;">&lt;&lt; shift);
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Gpio&lt;Input&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Reads the pin&#39;s value. Returns `true` if the level is high and `false`
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// if the level is low.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">level</span><span style="color:#c0c5ce;">(&amp;</span><span style="color:#b48ead;">mut </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; </span><span style="color:#b48ead;">bool </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> index = (</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin / </span><span style="color:#d08770;">32</span><span style="color:#c0c5ce;">) as </span><span style="color:#b48ead;">usize</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> shift = </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin as </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">- index * </span><span style="color:#d08770;">32</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.</span><span style="color:#d08770;">LEV</span><span style="color:#c0c5ce;">[index]
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">has_mask</span><span style="color:#c0c5ce;">(</span><span style="color:#d08770;">1 </span><span style="color:#c0c5ce;">&lt;&lt; shift)
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>The code above follow from our discussion about what registers do what and the pins they
+correspond to. The comments should clarify the arithmetic needed to select the correct bit(s)
+for a given pin.</p>
+<p>And then, boom - we suddenly have a way of tagging <code>Gpio</code> typed objects with the state they're
+currently in by wrapping the type we're parameterizing on with the phantom data type.
+This is how we'll keep track of states, but how will we define our state-transitions?
+Like before, we can use <em>typed moves</em> to define transitions between states. We know how to do that.</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Gpio&lt;Uninitialized&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">transition</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;Output&gt; {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">Gpio {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">pin: </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin,
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">registers: </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers,
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">_state: PhantomData
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p><code>self</code>, not being a reference, is moved into <code>transition()</code> and out comes a new output pin of type
+<code>Gpio&lt;Output&gt;</code> with the old <code>self</code> dropped.</p>
+<p>However, transitions can exists on any one of the states (types) the <code>Gpio</code> type itself is
+parmaterized on and we should have a way of generically describing a transition so that we
+don't have to enumerate each and every state a given state has transitions to. To be able to
+say something like, &quot;Transition GPIO pin 42 from state T to some state S&quot;.</p>
+<p>Let's use these generic type parameters in place of <code>Uninitialized</code> and <code>Output</code>:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl</span><span style="color:#c0c5ce;">&lt;T&gt; Gpio&lt;T&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Transitions `self` to state `S`, consuming `self` and returning a new
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// `Gpio` instance in state `S`. This method should _never_ be exposed to
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// the public!
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">#[</span><span style="color:#bf616a;">inline</span><span style="color:#c0c5ce;">(always)]
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">fn </span><span style="color:#8fa1b3;">transition</span><span style="color:#c0c5ce;">&lt;S&gt;(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;S&gt; {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">Gpio {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">pin: </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin,
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">registers: </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers,
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">_state: PhantomData
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>This is the <em>only</em> method on <code>Gpio</code>-typed objects we should hide from the user of our driver
+compeltely because it is generic on the states it can transition to and from, working for
+all <code>S</code> and <code>T</code>. As implementors of this stateful <code>Gpio</code> type, we must use <code>transition()</code> carefully
+to spec otherwise the driver itself will be incorrect and will have none of the guarantees
+the user of our driver would expect.</p>
+<p>To transition we'll tell the Rust compiler what type to expect, or at least enough information
+so that it can infer:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// Sets this pin to be an _output_ pin. Consumes self and returns a `Gpio`
+</span><span style="color:#65737e;">/// structure in the `Output` state.
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">into_output</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;Output&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">into_alt</span><span style="color:#c0c5ce;">(Function::Output).</span><span style="color:#96b5b4;">transition</span><span style="color:#c0c5ce;">()
+</span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#65737e;">/// Sets this pin to be an _input_ pin. Consumes self and returns a `Gpio`
+</span><span style="color:#65737e;">/// structure in the `Input` state.
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">into_input</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;Input&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">into_alt</span><span style="color:#c0c5ce;">(Function::Input).</span><span style="color:#96b5b4;">transition</span><span style="color:#c0c5ce;">()
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Where <code>into_alt</code> is a function on <code>Gpio&lt;Uninitialized&gt;</code> that enables an alternative function for
+a <code>self</code> (pin), by <code>OR</code>-masking the three bits associated with that pin with the bit pattern
+that corresponds to the <code>Function</code> type variant we're using:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#65737e;">/// Enables the alternative function `function` for `self`. Consumes self
+</span><span style="color:#65737e;">/// and returns a `Gpio` structure in the `Alt` state.
+</span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">into_alt</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">function</span><span style="color:#c0c5ce;">: Function) -&gt; Gpio&lt;Alt&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> fsel_index = </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin as </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">/ </span><span style="color:#d08770;">10</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// 10 pins per GPFSELn register, 3-bits per FSEL{n} field (i.e: per pin)
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">let</span><span style="color:#c0c5ce;"> pin_offset = (</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.pin as </span><span style="color:#b48ead;">usize </span><span style="color:#c0c5ce;">% </span><span style="color:#d08770;">10</span><span style="color:#c0c5ce;">) * </span><span style="color:#d08770;">3</span><span style="color:#c0c5ce;">;
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// clear function bits for pin
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers.</span><span style="color:#d08770;">FSEL</span><span style="color:#c0c5ce;">[fsel_index]
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">and_mask</span><span style="color:#c0c5ce;">(!(</span><span style="color:#d08770;">0b111 </span><span style="color:#c0c5ce;">&lt;&lt; pin_offset));
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">// write new function bits
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.registers.</span><span style="color:#d08770;">FSEL</span><span style="color:#c0c5ce;">[fsel_index]
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">or_mask</span><span style="color:#c0c5ce;">((function as </span><span style="color:#b48ead;">u32</span><span style="color:#c0c5ce;">) &lt;&lt; pin_offset);
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">.</span><span style="color:#96b5b4;">transition</span><span style="color:#c0c5ce;">()
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>Rust will infer, for example,  when calling <code>transition()</code> within <code>.into_output()</code> on a pin that
+the <code>T</code> type is a <code>Gpio&lt;Alt&gt;</code> being transformed into a <code>S</code> which is a <code>Gpio&lt;Output&gt;</code>.</p>
+<p>For completion here's the full <code>Gpio&lt;Uninitialized&gt;</code> implementation:</p>
+<pre style="background-color:#2b303b;">
+<span style="color:#b48ead;">impl </span><span style="color:#c0c5ce;">Gpio&lt;Uninitialized&gt; {
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Returns a new `GPIO` structure for pin number `pin`.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">///
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// # Panics
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">///
+</span><span style="color:#c0c5ce;">    </span><span style="color:#65737e;">/// Panics if `pin` &gt; `53`.
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">new</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">pin</span><span style="color:#c0c5ce;">: </span><span style="color:#b48ead;">u8</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;Uninitialized&gt; {
+</span><span style="color:#c0c5ce;">        </span><span style="color:#b48ead;">if</span><span style="color:#c0c5ce;"> pin &gt; </span><span style="color:#d08770;">53 </span><span style="color:#c0c5ce;">{
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">panic!(&quot;</span><span style="color:#a3be8c;">Gpio::new(): pin {} exceeds maximum of 53</span><span style="color:#c0c5ce;">&quot;, pin);
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">Gpio {
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">registers: </span><span style="color:#b48ead;">unsafe </span><span style="color:#c0c5ce;">{ &amp;</span><span style="color:#b48ead;">mut </span><span style="color:#c0c5ce;">*(</span><span style="color:#d08770;">GPIO_BASE </span><span style="color:#c0c5ce;">as </span><span style="color:#b48ead;">*mut</span><span style="color:#c0c5ce;"> Registers) },
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">pin: pin,
+</span><span style="color:#c0c5ce;">            </span><span style="color:#c0c5ce;">_state: PhantomData
+</span><span style="color:#c0c5ce;">        </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">    </span><span style="color:#c0c5ce;">}
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">into_alt</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">, </span><span style="color:#bf616a;">function</span><span style="color:#c0c5ce;">: Function) -&gt; Gpio&lt;Alt&gt; { ... }
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">into_output</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;Output&gt; { ... }
+</span><span style="color:#c0c5ce;">
+</span><span style="color:#c0c5ce;">    </span><span style="color:#b48ead;">pub fn </span><span style="color:#8fa1b3;">into_input</span><span style="color:#c0c5ce;">(</span><span style="color:#bf616a;">self</span><span style="color:#c0c5ce;">) -&gt; Gpio&lt;Input&gt; { ... }
+</span><span style="color:#c0c5ce;">}
+</span></pre>
+<p>The type <code>Gpio&lt;Uninitialized&gt;</code> is the only state that has a <code>new</code> method so saying <code>Gpio::new(42)</code>
+will create an uninitialized pin of type <code>Gpio&lt;Uninitialized&gt;</code> and the user can't fabricate an
+invalid initial state and accidentally violate the hardware specification.</p>
+<h2 id="conclusion">Conclusion</h2>
+<p>Wow, with a combination of <em>phantom data types</em> and <em>typed moves</em> we are able to create type states for
+our types! Rust is unique in allowing us to do this, though we should expect many languages down the
+road to use some inspration from Rust's type system to allow programmers to encode <em>perfectly</em> the semantics
+of a type state in their programs. With this, we can create a world with more secure hardware drivers.</p>
+<p>Just Beautiful.</p>
 <h2 id="shout-outs">Shout outs</h2>
 <p>Thanks to those who wrote the Rust <a href="https://hoverbear.org/2016/10/12/rust-state-machine-pattern/">embedded book</a> on peripherals as FSMs, hoverbear's
 <a href="https://hoverbear.org/2016/10/12/rust-state-machine-pattern/">&quot;Pretty State Machine Patterns in Rust&quot;</a> post, to mozilla
@@ -213,6 +629,8 @@ researcher <a href="https://yoric.github.io/post/rust-typestate/">Dale Teller</a
 this <a href="https://web.stanford.edu/class/cs140e">class</a> which introduced me to many interesting subjects, and of course to the original
 <a href="http://www.cs.cmu.edu/%7Ealdrich/papers/classic/tse12-typestate.pdf">paper</a> on the typestate by Robert E. Strom and Shaula Yemini. I didn't understand typestates
 and their use until reading all of these resources. Affline type systems have never been so fascinating!</p>
+<p>Also, at the Chaos Communications Congress this year was a great talk by Paul Emmerich, Simon Ellmann and Sebastian Voit
+on writing safe and secure drivers in high-level languages with Rust as a primary example. Here's the <a href="https://media.ccc.de/v/35c3-9670-safe_and_secure_drivers_in_high-level_languages">link</a>.</p>
 <div class="footnote-definition" id="2"><sup class="footnote-definition-label">1</sup>
 <p>Example adapted from https://en.wikipedia.org/wiki/Type_theory</p>
 </div>
