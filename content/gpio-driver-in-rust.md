@@ -33,7 +33,7 @@ type with our grammar saying we must put adjectives _before_ the nouns, so "cold
 a valid expression while "beer cold" is a "nonsensical".
 
 The mathematical notion of the "type" grew out of some apparent inconsistencies in the foundations
-of mathematics. Bertrand Russel wrote of the "theories of type" back in 1802 as a way to remediate a version of
+of mathematics. Bertrand Russel wrote of the "theories of type" back in 1902 as a way to remediate a version of
 [naive set theory][8] that was afflicted with [Russel's paradox][9]. The details of all this are beyond
 the scope of this article, but we'll address the more common usage of what we mean by a "type theory" when we
 explore Alonzo Church's simply typed lambda calculus in [another post][11]. [This][15] is another great resource
