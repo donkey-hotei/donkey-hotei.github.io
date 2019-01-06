@@ -1,0 +1,44 @@
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    
+        <url>
+            <loc>http://mysterious.computer/gpio-driver-in-rust/</loc>
+            
+                <lastmod>2019-01-02</lastmod>
+            
+        </url>
+    
+        <url>
+            <loc>http://mysterious.computer/lfsr-stream-cipher-csaw/</loc>
+            
+                <lastmod>2018-01-01</lastmod>
+            
+        </url>
+    
+        <url>
+            <loc>http://mysterious.computer/memory-allocators-in-rust/</loc>
+            
+                <lastmod>2018-01-03</lastmod>
+            
+        </url>
+    
+        <url>
+            <loc>http://mysterious.computer/safely-exposing-unsafe-api/</loc>
+            
+                <lastmod>2018-12-23</lastmod>
+            
+        </url>
+    
+        <url>
+            <loc>http://mysterious.computer/simply-typed-lambda-calculus/</loc>
+            
+                <lastmod>2018-12-23</lastmod>
+            
+        </url>
+    
+    
+        <url>
+            <loc>http://mysterious.computer/</loc>
+        </url>
+    
+    
+</urlset>
